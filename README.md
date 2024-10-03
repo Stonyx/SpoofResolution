@@ -1,4 +1,4 @@
-# SpoofResolution
+# Spoof Resolution
 
 A DLL based approach to spoofing the resolution information that an application or game receives from various Windows API calls.  Currently the following 4 API functions are detoured to provide spoofed resolution information to applications or games:
 
