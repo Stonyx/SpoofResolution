@@ -1,0 +1,3 @@
+LIBRARY SPOOFRES
+EXPORTS
+  DetourFinishHelperProcess @1
