@@ -76,6 +76,7 @@ void HandleException(DllProxy::ErrorCode code)
 #endif
 
 // Define and/or declare needed global variables
+static int(WINAPI* WindowsGetDeviceCaps)(HDC hdc, int index) = GetDeviceCaps;
 static BOOL(WINAPI* WindowsEnumDisplaySettingsA)(LPCSTR lpszDeviceName, DWORD iModeNum, DEVMODEA* lpDevMode) =
   EnumDisplaySettingsA;
 static BOOL(WINAPI* WindowsEnumDisplaySettingsW)(LPCWSTR lpszDeviceName, DWORD iModeNum, DEVMODEW* lpDevMode) =
@@ -85,66 +86,162 @@ static BOOL(WINAPI* WindowsEnumDisplaySettingsExA)(LPCSTR lpszDeviceName, DWORD 
 static BOOL(WINAPI* WindowsEnumDisplaySettingsExW)(LPCWSTR lpszDeviceName, DWORD iModeNum, DEVMODEW* lpDevMode,
   DWORD dwFlags) = EnumDisplaySettingsExW;
 HMODULE gModule;
-bool gIniError;
+bool gIniFileError;
 CSimpleIni gIniFile;
-struct DeviceMapStruct
+struct EDSDeviceMapStruct
 {
   bool wildcard;
   DWORD mode;
   std::wstring section;
 };
-std::multimap<std::wstring, DeviceMapStruct> gDeviceMap;
+std::multimap<std::wstring, EDSDeviceMapStruct> gEDSDeviceMap;
 
-// SpoofResolution function
-BOOL SpoofResolution(BOOL valuesPopulated, LPCWSTR deviceName, DWORD modeNumber, DWORD* fields, DWORD* width,
-  DWORD* height, DWORD* bitsPerPixel, DWORD* frequency, DWORD* flags, POINTL* position, DWORD* orientation)
+// GetIniFile function
+static void LoadIniFile()
+{
+  // Get the full path to this DLL
+  std::wstring path(MAX_PATH, 0);
+  if (GetModuleFileName(gModule, &path[0], MAX_PATH) == 0)
+  {
+    // Show an error message and set the ini file error flag
+    MessageBox(NULL, L"Failed to get DLL file path", L"Spoof Resolution", MB_OK | MB_ICONERROR);
+    gIniFileError = true;
+
+    return;
+  }
+
+  // Remove the file name from the path and replace it with spoofres.ini
+  path.erase(path.rfind(std::filesystem::path::preferred_separator) + 1);
+  path += L"spoofres.ini";
+
+  // Check if the ini file does not exist
+  if (!std::filesystem::exists(path))
+  {
+    // Show an error message and set the ini file error flag
+    MessageBox(NULL, L"Failed to locate spoofres.ini file", L"Spoof Resolution", MB_OK | MB_ICONERROR);
+    gIniFileError = true;
+
+    return;
+  }
+
+  // Open the ini file
+  gIniFile.SetUnicode();
+  if (gIniFile.LoadFile(path.c_str()) < 0)
+  {
+    // Show an error message and set the ini file error flag
+    MessageBox(NULL, L"Failed to open spoofres.ini file", L"Spoof Resolution", MB_OK | MB_ICONERROR);
+    gIniFileError = true;
+
+    return;
+  }
+}
+
+// SpoofGDCResolution function
+int SpoofGDCResolution(int value, int index)
 {
   // Check if we encountered any ini file errors before
-  if (gIniError)
-    return false;
+  if (gIniFileError)
+    return value;
 
   // Check if the ini file is empty
   if (gIniFile.IsEmpty())
   {
-    // Get the full path to this DLL
-    std::wstring path(MAX_PATH, 0);
-    if (GetModuleFileName(gModule, &path[0], MAX_PATH) == 0)
-    {
-      // Show an error message and set the ini file error flag
-      MessageBox(NULL, L"Failed to get DLL file path", L"Spoof Resolution", MB_OK | MB_ICONERROR);
-      gIniError = true;
+    // Load the ini file
+    LoadIniFile();
+  }
 
-      return false;
-    }
+  // Load the resolution information from the ini file
+  // Note: we load all of the reolution information from the ini file before assigning any of it to the passed in
+  //   pointers to avoid partially spoofing the resolution information if an exception is thrown during loading
+  std::unique_ptr<int> spoofedValue = std::unique_ptr<int>(nullptr);
+  try
+  {
+    if (index == HORZRES && gIniFile.KeyExists(L"GDC", L"Width"))
+      spoofedValue = std::make_unique<int>(std::stoi(gIniFile.GetValue(L"GDC", L"Width")));
+    else if (index == VERTRES && gIniFile.KeyExists(L"GDC", L"Height"))
+      spoofedValue = std::make_unique<int>(std::stoi(gIniFile.GetValue(L"GDC", L"Height")));
+    else if (index == BITSPIXEL && gIniFile.KeyExists(L"GDC", L"BitsPerPixel"))
+      spoofedValue = std::make_unique<int>(std::stoi(gIniFile.GetValue(L"GDC", L"BitsPerPixel")));
+    else if (index == VREFRESH && gIniFile.KeyExists(L"GDC", L"Frequency"))
+      spoofedValue = std::make_unique<int>(std::stoi(gIniFile.GetValue(L"GDC", L"Frequency")));
+  }
+  catch (std::invalid_argument)
+  {
+    // Show an error message and set the ini file error flag
+    MessageBox(NULL, L"Failed to load resolution information from spoofres.ini file", L"Spoof Resolution",
+      MB_OK | MB_ICONERROR);
+    gIniFileError = true;
 
-    // Remove the file name from the path and replace it with spoofres.ini
-    path.erase(path.rfind(std::filesystem::path::preferred_separator) + 1);
-    path += L"spoofres.ini";
+    return value;
+  }
+  catch (std::out_of_range)
+  {
+    // Show an error message and set the ini file error flag
+    MessageBox(NULL, L"Failed to load resolution information from spoofres.ini file", L"Spoof Resolution",
+      MB_OK | MB_ICONERROR);
+    gIniFileError = true;
 
-    // Check if the ini file does not exist
-    if (!std::filesystem::exists(path))
-    {
-      // Show an error message and set the ini file error flag
-      MessageBox(NULL, L"Failed to locate spoofres.ini file", L"Spoof Resolution", MB_OK | MB_ICONERROR);
-      gIniError = true;
+    return value;
+  }
 
-      return false;
-    }
+  // Spoof the resolution information
+  if (spoofedValue != nullptr)
+  {
+    value = *spoofedValue;
 
-    // Open the ini file
-    gIniFile.SetUnicode();
-    if (gIniFile.LoadFile(path.c_str()) < 0)
-    {
-      // Show an error message and set the ini file error flag
-      MessageBox(NULL, L"Failed to open spoofres.ini file", L"Spoof Resolution", MB_OK | MB_ICONERROR);
-      gIniError = true;
+    #if defined(TEST_VERSION) || defined(VERBOSE_TEST_VERSION)
+    // Show message
+    std::wstring message = L"Spoofed resolution for index ";
+    if (index == HORZRES)
+      message += std::format(L"HORZRES with the following details:\n\nWidth = {:d}", *spoofedValue);
+    else if (index == VERTRES)
+      message += std::format(L"VERTRES with the following details:\n\nHeight = {:d}", *spoofedValue);
+    else if (index == BITSPIXEL)
+      message += std::format(L"BITSPIXEL with the following details:\n\nBits Per Pixel = {:d}", *spoofedValue);
+    else if (index == VREFRESH)
+      message += std::format(L"VREFRESH with the following details:\n\nFrequency = {:d}", *spoofedValue);
+    MessageBox(NULL, message.c_str(), L"Spoof Resolution", MB_OK);
+    #endif
+  }
 
-      return false;
-    }
+  return value;
+}
+
+// DetouredGetDeviceCaps function
+int WINAPI DetouredGetDeviceCaps(HDC hdc, int index)
+{
+  // Call the real GetDeviceCaps function
+  int value = WindowsGetDeviceCaps(hdc, index);
+
+  #if defined(VERBOSE_TEST_VERSION)
+  // Show message
+  MessageBox(NULL, std::format(L"Detoured GetDeviceCaps function called with the following parameters:\n\nindex = {:d}",
+    index).c_str(), L"Spoof Resolution", MB_OK);
+  #endif
+
+  // Spoof the resolution
+  value = SpoofGDCResolution(value, index);
+
+  return value;
+}
+
+// SpoofEDSResolution function
+BOOL SpoofEDSResolution(BOOL valuesPopulated, LPCWSTR deviceName, DWORD modeNumber, DWORD* fields, DWORD* width,
+  DWORD* height, DWORD* bitsPerPixel, DWORD* frequency, DWORD* flags, POINTL* position, DWORD* orientation)
+{
+  // Check if we encountered any ini file errors before
+  if (gIniFileError)
+    return FALSE;
+
+  // Check if the ini file is empty
+  if (gIniFile.IsEmpty())
+  {
+    // Load the ini file
+    LoadIniFile();
   }
 
   // Check if the device map is empty
-  if (gDeviceMap.empty())
+  if (gEDSDeviceMap.empty())
   {
     // Load all of the ini file sections
     CSimpleIni::TNamesDepend sections;
@@ -153,29 +250,32 @@ BOOL SpoofResolution(BOOL valuesPopulated, LPCWSTR deviceName, DWORD modeNumber,
     {
       // Show an error message and set the ini file error flag
       MessageBox(NULL, L"Failed to load sections from spoofres.ini file", L"Spoof Resolution", MB_OK | MB_ICONERROR);
-      gIniError = true;
+      gIniFileError = true;
 
-      return false;
+      return FALSE;
     }
 
     // Loop through the sections
     for (CSimpleIni::Entry& section : sections)
     {
-      // Check if the section name does not contains a | character
+      // Get the section name
       std::wstring sectionName = section.pItem;
-      if (sectionName.find(L'|') == std::string::npos)
-      {
-        // Show an error message and set the ini file error flag
-        MessageBox(NULL, L"Failed to parse section names in spoofres.ini file", L"Spoof Resolution",
-          MB_OK | MB_ICONERROR);
-        gIniError = true;
 
-        return false;
-      }
+      // Check if the section name does not contain at least two | characters
+      if (std::count_if(sectionName.begin(), sectionName.end(), [](const WCHAR c) { return c == L'|'; }) < 2)
+        continue;
 
-      // Split the section name into the device name and mode number parts
-      // Note: we are searching from the end of the section name in case the device name contains a | character
+      // Get the type part of the section name
+      std::wstring typePart(sectionName);
+      typePart.erase(typePart.find(L'|'));
+
+      // Check if this is not an EDS type section
+      if (typePart != L"EDS")
+        continue;
+
+      // Get the device name and mode number parts of the section name
       std::wstring deviceNamePart(sectionName);
+      deviceNamePart.erase(0, deviceNamePart.find(L'|') + 1);
       deviceNamePart.erase(deviceNamePart.rfind(L'|'));
       std::wstring modeNumberPart(sectionName);
       modeNumberPart.erase(0, modeNumberPart.rfind(L'|') + 1);
@@ -184,31 +284,31 @@ BOOL SpoofResolution(BOOL valuesPopulated, LPCWSTR deviceName, DWORD modeNumber,
       try
       {
         if (modeNumberPart == L"*")
-          gDeviceMap.insert({ deviceNamePart, { true, 0, sectionName } });
+          gEDSDeviceMap.insert({ deviceNamePart, { true, 0, sectionName } });
         else if (modeNumberPart == L"Current")
-          gDeviceMap.insert({ deviceNamePart, { false, ENUM_CURRENT_SETTINGS, sectionName } });
+          gEDSDeviceMap.insert({ deviceNamePart, { false, ENUM_CURRENT_SETTINGS, sectionName } });
         else if (modeNumberPart == L"Registry")
-          gDeviceMap.insert({ deviceNamePart, { false, ENUM_REGISTRY_SETTINGS, sectionName } });
+          gEDSDeviceMap.insert({ deviceNamePart, { false, ENUM_REGISTRY_SETTINGS, sectionName } });
         else
-          gDeviceMap.insert({ deviceNamePart, { false, std::stoul(modeNumberPart), sectionName } });
+          gEDSDeviceMap.insert({ deviceNamePart, { false, std::stoul(modeNumberPart), sectionName } });
       }
       catch (std::invalid_argument)
       {
         // Show an error message and set the ini file error flag
         MessageBox(NULL, L"Failed to parse section names in spoofres.ini file", L"Spoof Resolution",
           MB_OK | MB_ICONERROR);
-        gIniError = true;
+        gIniFileError = true;
 
-        return false;
+        return FALSE;
       }
       catch (std::out_of_range)
       {
         // Show an error message and set the ini file error flag
         MessageBox(NULL, L"Failed to parse section names in spoofres.ini file", L"Spoof Resolution",
           MB_OK | MB_ICONERROR);
-        gIniError = true;
+        gIniFileError = true;
 
-        return false;
+        return FALSE;
       }
     }
   }
@@ -216,9 +316,9 @@ BOOL SpoofResolution(BOOL valuesPopulated, LPCWSTR deviceName, DWORD modeNumber,
   // Load the range of values for this device from the device map
   // Note: range is of type std::pair<std::multimap<std::wstring, DeviceMapStruct>::iterator,
   //   std::multimap<std::wstring, DeviceMapStruct>::iterator>
-  auto range = gDeviceMap.equal_range(L"*");
+  auto range = gEDSDeviceMap.equal_range(L"*");
   if (range.first == range.second)
-    range = gDeviceMap.equal_range(deviceName);
+    range = gEDSDeviceMap.equal_range(deviceName);
   if (range.first == range.second)
   {
     #if defined(VERBOSE_TEST_VERSION)
@@ -227,7 +327,7 @@ BOOL SpoofResolution(BOOL valuesPopulated, LPCWSTR deviceName, DWORD modeNumber,
       MB_OK);
     #endif
 
-    return false;
+    return FALSE;
   }
 
   // Find the key/value pair for this mode number
@@ -245,7 +345,7 @@ BOOL SpoofResolution(BOOL valuesPopulated, LPCWSTR deviceName, DWORD modeNumber,
         modeNumber).c_str(), L"Spoof Resolution", MB_OK);
     #endif
 
-    return false;
+    return FALSE;
   }
 
   // Load the resolution information from the ini file
@@ -288,18 +388,18 @@ BOOL SpoofResolution(BOOL valuesPopulated, LPCWSTR deviceName, DWORD modeNumber,
     // Show an error message and set the ini file error flag
     MessageBox(NULL, L"Failed to load resolution information from spoofres.ini file", L"Spoof Resolution",
       MB_OK | MB_ICONERROR);
-    gIniError = true;
+    gIniFileError = true;
 
-    return false;
+    return FALSE;
   }
   catch (std::out_of_range)
   {
     // Show an error message and set the ini file error flag
     MessageBox(NULL, L"Failed to load resolution information from spoofres.ini file", L"Spoof Resolution",
       MB_OK | MB_ICONERROR);
-    gIniError = true;
+    gIniFileError = true;
 
-    return false;
+    return FALSE;
   }
 
   // Spoof the resolution information
@@ -366,7 +466,7 @@ BOOL SpoofResolution(BOOL valuesPopulated, LPCWSTR deviceName, DWORD modeNumber,
   MessageBox(NULL, message.c_str(), L"Spoof Resolution", MB_OK);
   #endif
 
-  return true;
+  return TRUE;
 }
 
 // DetouredEnumDisplaySettingsA function
@@ -395,7 +495,7 @@ BOOL WINAPI DetouredEnumDisplaySettingsA(LPCSTR lpszDeviceName, DWORD iModeNum, 
   #endif
 
   // Spoof the resolution
-  BOOL resolutionSpoofed = SpoofResolution(devModePopulated, deviceName.c_str(), iModeNum, &lpDevMode->dmFields,
+  BOOL resolutionSpoofed = SpoofEDSResolution(devModePopulated, deviceName.c_str(), iModeNum, &lpDevMode->dmFields,
     &lpDevMode->dmPelsWidth, &lpDevMode->dmPelsHeight, &lpDevMode->dmBitsPerPel, &lpDevMode->dmDisplayFrequency,
     &lpDevMode->dmDisplayFlags, NULL, NULL);
 
@@ -422,7 +522,7 @@ BOOL WINAPI DetouredEnumDisplaySettingsW(LPCWSTR lpszDeviceName, DWORD iModeNum,
   #endif
 
   // Spoof the resolution
-  BOOL resolutionSpoofed = SpoofResolution(devModePopulated, lpszDeviceName, iModeNum, &lpDevMode->dmFields,
+  BOOL resolutionSpoofed = SpoofEDSResolution(devModePopulated, lpszDeviceName, iModeNum, &lpDevMode->dmFields,
     &lpDevMode->dmPelsWidth, &lpDevMode->dmPelsHeight, &lpDevMode->dmBitsPerPel, &lpDevMode->dmDisplayFrequency,
     &lpDevMode->dmDisplayFlags, NULL, NULL);
 
@@ -455,7 +555,7 @@ BOOL WINAPI DetouredEnumDisplaySettingsExA(LPCSTR lpszDeviceName, DWORD iModeNum
   #endif
 
   // Spoof the resolution
-  BOOL resolutionSpoofed = SpoofResolution(devModePopulated, deviceName.c_str(), iModeNum, &lpDevMode->dmFields,
+  BOOL resolutionSpoofed = SpoofEDSResolution(devModePopulated, deviceName.c_str(), iModeNum, &lpDevMode->dmFields,
     &lpDevMode->dmPelsWidth, &lpDevMode->dmPelsHeight, &lpDevMode->dmBitsPerPel, &lpDevMode->dmDisplayFrequency,
     &lpDevMode->dmDisplayFlags, &lpDevMode->dmPosition, &lpDevMode->dmDisplayOrientation);
 
@@ -482,7 +582,7 @@ BOOL WINAPI DetouredEnumDisplaySettingsExW(LPCWSTR lpszDeviceName, DWORD iModeNu
   #endif
 
   // Spoof the resolution
-  BOOL resolutionSpoofed = SpoofResolution(devModePopulated, lpszDeviceName, iModeNum, &lpDevMode->dmFields,
+  BOOL resolutionSpoofed = SpoofEDSResolution(devModePopulated, lpszDeviceName, iModeNum, &lpDevMode->dmFields,
     &lpDevMode->dmPelsWidth, &lpDevMode->dmPelsHeight, &lpDevMode->dmBitsPerPel, &lpDevMode->dmDisplayFrequency,
     &lpDevMode->dmDisplayFlags, &lpDevMode->dmPosition, &lpDevMode->dmDisplayOrientation);
 
@@ -513,6 +613,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     // Attach the function detours
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
+    DetourAttach(&(PVOID&)WindowsGetDeviceCaps, DetouredGetDeviceCaps);
     DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsA, DetouredEnumDisplaySettingsA);
     DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsW, DetouredEnumDisplaySettingsW);
     DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsExA, DetouredEnumDisplaySettingsExA);
@@ -530,6 +631,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     // Detach the function detours
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
+    DetourDetach(&(PVOID&)WindowsGetDeviceCaps, DetouredGetDeviceCaps);
     DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsA, DetouredEnumDisplaySettingsA);
     DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsW, DetouredEnumDisplaySettingsW);
     DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsExA, DetouredEnumDisplaySettingsExA);
