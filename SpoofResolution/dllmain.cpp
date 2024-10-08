@@ -85,6 +85,14 @@ static BOOL(WINAPI* WindowsEnumDisplaySettingsExA)(LPCSTR lpszDeviceName, DWORD 
   DWORD dwFlags) = EnumDisplaySettingsExA;
 static BOOL(WINAPI* WindowsEnumDisplaySettingsExW)(LPCWSTR lpszDeviceName, DWORD iModeNum, DEVMODEW* lpDevMode,
   DWORD dwFlags) = EnumDisplaySettingsExW;
+struct {
+  bool GetSystemMetrics : 1 = false;
+  bool GetDeviceCaps : 1 = false;
+  bool EnumDisplaySettingsA : 1 = false;
+  bool EnumDisplaySettingsW : 1 = false;
+  bool EnumDisplaySettingsExA : 1 = false;
+  bool EnumDisplaySettingsExW : 1 = false;
+} gDetouredFunctions;
 std::unique_ptr<CSimpleIni> gIniFile = std::unique_ptr<CSimpleIni>(nullptr);
 std::shared_ptr<std::wofstream> gLogFile = std::shared_ptr<std::wofstream>(nullptr);
 
@@ -368,22 +376,34 @@ BOOL SpoofEDSResolution(BOOL realFuncRetValue, LPCWSTR deviceName, DWORD modeNum
     std::vector<std::wstring> sections;
     if (modeNumber == ENUM_CURRENT_SETTINGS)
     {
-      sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|Current"));
+      if (deviceName != NULL)
+        sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|Current"));
+      else
+        sections.push_back(std::wstring(L"EDS|NULL|Current"));
       sections.push_back(std::wstring(L"EDS|*|Current"));
     }
     else if (modeNumber == ENUM_REGISTRY_SETTINGS)
     {
-      sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|Registry"));
+      if (deviceName != NULL)
+        sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|Registry"));
+      else
+        sections.push_back(std::wstring(L"EDS|NULL|Registry"));
       sections.push_back(std::wstring(L"EDS|*|Registry"));
     }
     else
     {
-      sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|") + std::to_wstring(modeNumber));
+      if (deviceName != NULL)
+        sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|") + std::to_wstring(modeNumber));
+      else
+        sections.push_back(std::wstring(L"EDS|NULL|") + std::to_wstring(modeNumber));
       sections.push_back(std::wstring(L"EDS|*|") + std::to_wstring(modeNumber));
     }
     if (realFuncRetValue)
     {
-      sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|*"));
+      if (deviceName != NULL)
+        sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|*"));
+      else
+        sections.push_back(std::wstring(L"EDS|NULL|*"));
       sections.push_back(std::wstring(L"EDS|*|*"));
     }
 
@@ -448,7 +468,11 @@ BOOL SpoofEDSResolution(BOOL realFuncRetValue, LPCWSTR deviceName, DWORD modeNum
   // Write to the log file
   if (gLogFile != nullptr)
   {
-    *gLogFile << L"Spoofed EnumDisplaySettings resolution for device " << deviceName << L" and mode number ";
+    *gLogFile << L"Spoofed EnumDisplaySettings resolution for device ";
+    if (deviceName == NULL)
+      *gLogFile << L"NULL and mode number ";
+    else
+      *gLogFile << deviceName << L" and mode number ";
     if (modeNumber == ENUM_CURRENT_SETTINGS)
       *gLogFile << L"ENUM_CURRENT_SETTINGS with the following details: ";
     else if (modeNumber == ENUM_REGISTRY_SETTINGS)
@@ -544,16 +568,23 @@ BOOL WINAPI DetouredEnumDisplaySettingsA(LPCSTR lpszDeviceName, DWORD iModeNum, 
   BOOL success = WindowsEnumDisplaySettingsA(lpszDeviceName, iModeNum, lpDevMode);
 
   // Convert the device name to a wide character string
-  uint16_t deviceNameLength = MultiByteToWideChar(CP_ACP, 0, lpszDeviceName, -1, NULL, 0);
-  std::wstring deviceName(deviceNameLength, 0);
-  MultiByteToWideChar(CP_ACP, 0, lpszDeviceName, -1, &deviceName[0], deviceNameLength);
-  deviceName.pop_back();
+  std::unique_ptr<std::wstring> deviceName = std::unique_ptr<std::wstring>(nullptr);
+  if (lpszDeviceName != NULL)
+  {
+    uint16_t deviceNameLength = MultiByteToWideChar(CP_ACP, 0, lpszDeviceName, -1, NULL, 0);
+    deviceName = std::make_unique<std::wstring>(deviceNameLength, 0);
+    MultiByteToWideChar(CP_ACP, 0, lpszDeviceName, -1, &(*deviceName)[0], deviceNameLength);
+    deviceName->pop_back();
+  }
 
   // Write to the log file
   if (gLogFile != nullptr)
   {
-    *gLogFile << L"Detoured EnumDisplaySettingsA function called with the following parameters: lpszDeviceName = " <<
-      deviceName << L", iModeNum = ";
+    *gLogFile << L"Detoured EnumDisplaySettingsA function called with the following parameters: lpszDeviceName = ";
+    if (deviceName == nullptr)
+      *gLogFile << "NULL, iModeNum = ";
+    else
+      *gLogFile << *deviceName << L", iModeNum = ";
     if (iModeNum == ENUM_CURRENT_SETTINGS)
       *gLogFile << L"ENUM_CURRENT_SETTINGS\n";
     else if (iModeNum == ENUM_REGISTRY_SETTINGS)
@@ -563,9 +594,9 @@ BOOL WINAPI DetouredEnumDisplaySettingsA(LPCSTR lpszDeviceName, DWORD iModeNum, 
   }
 
   // Spoof the resolution
-  success = SpoofEDSResolution(success, deviceName.c_str(), iModeNum, &lpDevMode->dmFields, &lpDevMode->dmPelsWidth,
-    &lpDevMode->dmPelsHeight, &lpDevMode->dmBitsPerPel, &lpDevMode->dmDisplayFrequency, &lpDevMode->dmDisplayFlags,
-    NULL, NULL);
+  success = SpoofEDSResolution(success, (deviceName != nullptr ? deviceName->c_str() : NULL), iModeNum,
+    &lpDevMode->dmFields, &lpDevMode->dmPelsWidth, &lpDevMode->dmPelsHeight, &lpDevMode->dmBitsPerPel,
+    &lpDevMode->dmDisplayFrequency, &lpDevMode->dmDisplayFlags, NULL, NULL);
 
   return success;
 }
@@ -579,8 +610,11 @@ BOOL WINAPI DetouredEnumDisplaySettingsW(LPCWSTR lpszDeviceName, DWORD iModeNum,
   // Write to the log file
   if (gLogFile != nullptr)
   {
-    *gLogFile << L"Detoured EnumDisplaySettingsW function called with the following parameters: lpszDeviceName = " <<
-      lpszDeviceName << L", iModeNum = ";
+    *gLogFile << L"Detoured EnumDisplaySettingsW function called with the following parameters: lpszDeviceName = ";
+    if (lpszDeviceName == NULL)
+      *gLogFile << L"NULL, iModeNum = ";
+    else
+      *gLogFile << lpszDeviceName << L", iModeNum = ";
     if (iModeNum == ENUM_CURRENT_SETTINGS)
       *gLogFile << L"ENUM_CURRENT_SETTINGS\n";
     else if (iModeNum == ENUM_REGISTRY_SETTINGS)
@@ -604,16 +638,23 @@ BOOL WINAPI DetouredEnumDisplaySettingsExA(LPCSTR lpszDeviceName, DWORD iModeNum
   BOOL success = WindowsEnumDisplaySettingsExA(lpszDeviceName, iModeNum, lpDevMode, dwFlags);
 
   // Convert the device name to a wide character string
-  uint16_t deviceNameLength = MultiByteToWideChar(CP_ACP, 0, lpszDeviceName, -1, NULL, 0);
-  std::wstring deviceName(deviceNameLength, 0);
-  MultiByteToWideChar(CP_ACP, 0, lpszDeviceName, -1, &deviceName[0], deviceNameLength);
-  deviceName.pop_back();
+  std::unique_ptr<std::wstring> deviceName = std::unique_ptr<std::wstring>(nullptr);
+  if (lpszDeviceName != NULL)
+  {
+    uint16_t deviceNameLength = MultiByteToWideChar(CP_ACP, 0, lpszDeviceName, -1, NULL, 0);
+    deviceName = std::make_unique<std::wstring>(deviceNameLength, 0);
+    MultiByteToWideChar(CP_ACP, 0, lpszDeviceName, -1, &(*deviceName)[0], deviceNameLength);
+    deviceName->pop_back();
+  }
 
   // Write to the log file
   if (gLogFile != nullptr)
   {
-    *gLogFile << L"Detoured EnumDisplaySettingsExA function called with the following parameters: lpszDeviceName = " <<
-      deviceName << L", iModeNum = ";
+    *gLogFile << L"Detoured EnumDisplaySettingsExA function called with the following parameters: lpszDeviceName = ";
+    if (deviceName == nullptr)
+      *gLogFile << L"NULL, iModeNum = ";
+    else
+      *gLogFile << *deviceName << L", iModeNum = ";
     if (iModeNum == ENUM_CURRENT_SETTINGS)
       *gLogFile << L"ENUM_CURRENT_SETTINGS\n";
     else if (iModeNum == ENUM_REGISTRY_SETTINGS)
@@ -623,9 +664,10 @@ BOOL WINAPI DetouredEnumDisplaySettingsExA(LPCSTR lpszDeviceName, DWORD iModeNum
   }
 
   // Spoof the resolution
-  success = SpoofEDSResolution(success, deviceName.c_str(), iModeNum, &lpDevMode->dmFields, &lpDevMode->dmPelsWidth,
-    &lpDevMode->dmPelsHeight, &lpDevMode->dmBitsPerPel, &lpDevMode->dmDisplayFrequency, &lpDevMode->dmDisplayFlags,
-    &lpDevMode->dmPosition, &lpDevMode->dmDisplayOrientation);
+  success = SpoofEDSResolution(success, (deviceName != nullptr ? deviceName->c_str() : NULL), iModeNum,
+    &lpDevMode->dmFields, &lpDevMode->dmPelsWidth, &lpDevMode->dmPelsHeight, &lpDevMode->dmBitsPerPel,
+    &lpDevMode->dmDisplayFrequency, &lpDevMode->dmDisplayFlags, &lpDevMode->dmPosition,
+    &lpDevMode->dmDisplayOrientation);
 
   return success;
 }
@@ -679,16 +721,61 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     if (gLogFile != nullptr)
       *gLogFile << L"DllMain function called with the following parameters: ul_reason_for_call = DLL_PROCESS_ATTACH\n";
 
-    // Attach the function detours
-    DetourTransactionBegin();
-    DetourUpdateThread(GetCurrentThread());
-    DetourAttach(&(PVOID&)WindowsGetSystemMetrics, DetouredGetSystemMetrics);
-    DetourAttach(&(PVOID&)WindowsGetDeviceCaps, DetouredGetDeviceCaps);
-    DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsA, DetouredEnumDisplaySettingsA);
-    DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsW, DetouredEnumDisplaySettingsW);
-    DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsExA, DetouredEnumDisplaySettingsExA);
-    DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsExW, DetouredEnumDisplaySettingsExW);
-    DetourTransactionCommit();
+    // Check if we have a valid ini file
+    if (gIniFile != nullptr)
+    {
+      // Start the detour process
+      DetourTransactionBegin();
+      DetourUpdateThread(GetCurrentThread());
+
+      // Check if there is a GSM section in the ini file
+      if (gIniFile->SectionExists(L"GSM"))
+      {
+        // Detour the GetSystemMetrics function
+        DetourAttach(&(PVOID&)WindowsGetSystemMetrics, DetouredGetSystemMetrics);
+        gDetouredFunctions.GetSystemMetrics = true;
+
+        // Write to the log file
+        if (gLogFile != nullptr)
+          *gLogFile << L"Detouring GetSystemMetrics function\n";
+      }
+
+      // Check if there is a GDC section in the ini file
+      if (gIniFile->SectionExists(L"GDC"))
+      {
+        // Detour the GetDeviceCaps function
+        DetourAttach(&(PVOID&)WindowsGetDeviceCaps, DetouredGetDeviceCaps);
+        gDetouredFunctions.GetDeviceCaps = true;
+
+        // Write to the log file
+        if (gLogFile != nullptr)
+          *gLogFile << L"Detouring getDeviceCaps function\n";
+      }
+
+      // Check if there are any EDS sections in the ini file
+      std::list<CSimpleIni::Entry> sections;
+      gIniFile->GetAllSections(sections);
+      if (std::find_if(sections.begin(), sections.end(),
+          [&](CSimpleIni::Entry& entry) { return std::wstring(entry.pItem).starts_with(L"EDS"); }) != sections.end())
+      {
+        // Detour the EnumDisplaySettings functions
+        DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsA, DetouredEnumDisplaySettingsA);
+        gDetouredFunctions.EnumDisplaySettingsA = true;
+        DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsW, DetouredEnumDisplaySettingsW);
+        gDetouredFunctions.EnumDisplaySettingsW = true;
+        DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsExA, DetouredEnumDisplaySettingsExA);
+        gDetouredFunctions.EnumDisplaySettingsExA = true;
+        DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsExW, DetouredEnumDisplaySettingsExW);
+        gDetouredFunctions.EnumDisplaySettingsExW = true;
+
+        // Write to the log file
+        if (gLogFile != nullptr)
+          *gLogFile << L"Detouring EnumDisplaySettings functions\n";
+      }
+
+      // Finish the detour process
+      DetourTransactionCommit();
+    }
 
     break;
   case DLL_PROCESS_DETACH:
@@ -703,12 +790,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     // Detach the function detours
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
-    DetourDetach(&(PVOID&)WindowsGetSystemMetrics, DetouredGetSystemMetrics);
-    DetourDetach(&(PVOID&)WindowsGetDeviceCaps, DetouredGetDeviceCaps);
-    DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsA, DetouredEnumDisplaySettingsA);
-    DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsW, DetouredEnumDisplaySettingsW);
-    DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsExA, DetouredEnumDisplaySettingsExA);
-    DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsExW, DetouredEnumDisplaySettingsExW);
+    if (gDetouredFunctions.GetSystemMetrics)
+      DetourDetach(&(PVOID&)WindowsGetSystemMetrics, DetouredGetSystemMetrics);
+    if (gDetouredFunctions.GetDeviceCaps)
+      DetourDetach(&(PVOID&)WindowsGetDeviceCaps, DetouredGetDeviceCaps);
+    if (gDetouredFunctions.EnumDisplaySettingsA)
+      DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsA, DetouredEnumDisplaySettingsA);
+    if (gDetouredFunctions.EnumDisplaySettingsW)
+      DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsW, DetouredEnumDisplaySettingsW);
+    if (gDetouredFunctions.EnumDisplaySettingsExA)
+      DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsExA, DetouredEnumDisplaySettingsExA);
+    if (gDetouredFunctions.EnumDisplaySettingsExW)
+      DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsExW, DetouredEnumDisplaySettingsExW);
     DetourTransactionCommit();
 
     break;
