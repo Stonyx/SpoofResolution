@@ -1,5 +1,6 @@
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <windows.h>
 #if defined(VERSION_DLL_VERSION) || defined(WINHTTP_DLL_VERSION)
 #include <QuickDllProxy/DllProxy.h>
@@ -76,7 +77,9 @@ void HandleException(DllProxy::ErrorCode code)
 
 // Define and/or declare needed global variables
 std::unique_ptr<CSimpleIni> gIniFile = std::unique_ptr<CSimpleIni>(nullptr);
+std::mutex gIniFileLock;
 std::shared_ptr<std::wofstream> gLogFile = std::shared_ptr<std::wofstream>(nullptr);
+std::mutex gLogFileLock;
 static int(WINAPI* WindowsGetSystemMetrics)(int nIndex) = GetSystemMetrics;
 static int(WINAPI* WindowsGetDeviceCaps)(HDC hdc, int index) = GetDeviceCaps;
 static BOOL(WINAPI* WindowsEnumDisplaySettingsA)(LPCSTR lpszDeviceName, DWORD iModeNum, DEVMODEA* lpDevMode) =
@@ -97,11 +100,16 @@ struct {
 } gDetouredFunctions;
 
 // SpoofGSMResolution function
-int SpoofGSMResolution(int realFuncRetValue, int index)
+static int SpoofGSMResolution(int realFuncRetValue, int index)
 {
   // Check if we do not have a valid ini file
+  gIniFileLock.lock();
   if (gIniFile == nullptr)
+  {
+    gIniFileLock.unlock();
     return realFuncRetValue;
+  }
+  gIniFileLock.unlock();
 
   // Load the resolution information from the ini file
   // Note: we load all of the reolution information from the ini file before assigning any of it to the passed in
@@ -109,6 +117,7 @@ int SpoofGSMResolution(int realFuncRetValue, int index)
   std::unique_ptr<int> spoofedValue = std::unique_ptr<int>(nullptr);
   try
   {
+    std::lock_guard<std::mutex> iniFileLock(gIniFileLock);
     if (index == SM_CXSCREEN && gIniFile->KeyExists(L"GSM", L"Width"))
       spoofedValue = std::make_unique<int>(std::stoi(gIniFile->GetValue(L"GSM", L"Width")));
     else if (index == SM_CYSCREEN && gIniFile->KeyExists(L"GSM", L"Height"))
@@ -116,18 +125,22 @@ int SpoofGSMResolution(int realFuncRetValue, int index)
   }
   catch (std::invalid_argument)
   {
-    // Show an error message and reset the ini file pointer
+    // Show an error message and reset the ini file
     MessageBox(NULL, L"Failed to load resolution information from spoofres.ini file", L"Spoof Resolution",
       MB_OK | MB_ICONERROR);
+    std::lock_guard<std::mutex> iniFileLock(gIniFileLock);
+    gIniFile->Reset();
     gIniFile.reset();
 
     return realFuncRetValue;
   }
   catch (std::out_of_range)
   {
-    // Show an error message and reset the ini file pointer
+    // Show an error message and reset the ini file
     MessageBox(NULL, L"Failed to load resolution information from spoofres.ini file", L"Spoof Resolution",
       MB_OK | MB_ICONERROR);
+    std::lock_guard<std::mutex> iniFileLock(gIniFileLock);
+    gIniFile->Reset();
     gIniFile.reset();
 
     return realFuncRetValue;
@@ -138,14 +151,22 @@ int SpoofGSMResolution(int realFuncRetValue, int index)
     return realFuncRetValue;
 
   // Write to the log file
-  if (gLogFile != nullptr)
+  gLogFileLock.lock();
+  if (gLogFile != nullptr && !gLogFile->fail())
   {
-    *gLogFile << L"Spoofed GetSystemMetrics resolution for index ";
+    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
+    //   block
+    std::time_t time = std::time(NULL);
+    #pragma warning(suppress : 4996)
+    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+      L" - Spoofed GetSystemMetrics resolution for index ";
     if (index == SM_CXSCREEN)
-      *gLogFile << L"SM_CXSCREEN with the following details: Width = " << *spoofedValue << "\n";
-    else if (index == SM_CYSCREEN)
-      *gLogFile << L"SM_CYSCREEN with the following details: Height = " << *spoofedValue << "\n";
+      *gLogFile << L"SM_CXSCREEN with the following details: Width = " << *spoofedValue << std::endl;
+    else // if (index == SM_CYSCREEN)
+      *gLogFile << L"SM_CYSCREEN with the following details: Height = " << *spoofedValue << std::endl;
+    gLogFile->flush();
   }
+  gLogFileLock.unlock();
 
   return *spoofedValue;
 }
@@ -157,9 +178,18 @@ int WINAPI DetouredGetSystemMetrics(int nIndex)
   int value = WindowsGetSystemMetrics(nIndex);
 
   // Write to the log file
-  if (gLogFile != nullptr)
-    *gLogFile << L"Detoured GetSystemMetrics function called with the following parameters: nIndex = " << nIndex <<
-      "\n";
+  gLogFileLock.lock();
+  if (gLogFile != nullptr && !gLogFile->fail())
+  {
+    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
+    //   block
+    std::time_t time = std::time(NULL);
+    #pragma warning(suppress : 4996)
+    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+      L" - Detoured GetSystemMetrics function called with the following parameters: nIndex = " << nIndex << std::endl;
+    gLogFile->flush();
+  }
+  gLogFileLock.unlock();
 
   // Spoof the resolution
   value = SpoofGSMResolution(value, nIndex);
@@ -168,11 +198,16 @@ int WINAPI DetouredGetSystemMetrics(int nIndex)
 }
 
 // SpoofGDCResolution function
-int SpoofGDCResolution(int realFuncRetValue, int index)
+static int SpoofGDCResolution(int realFuncRetValue, int index)
 {
   // Check if we do not have a valid ini file
+  gIniFileLock.lock();
   if (gIniFile == nullptr)
+  {
+    gIniFileLock.unlock();
     return realFuncRetValue;
+  }
+  gIniFileLock.unlock();
 
   // Load the resolution information from the ini file
   // Note: we load all of the reolution information from the ini file before assigning any of it to the passed in
@@ -180,6 +215,7 @@ int SpoofGDCResolution(int realFuncRetValue, int index)
   std::unique_ptr<int> spoofedValue = std::unique_ptr<int>(nullptr);
   try
   {
+    std::lock_guard<std::mutex> iniFileLock(gIniFileLock);
     if (index == HORZRES && gIniFile->KeyExists(L"GDC", L"Width"))
       spoofedValue = std::make_unique<int>(std::stoi(gIniFile->GetValue(L"GDC", L"Width")));
     else if (index == VERTRES && gIniFile->KeyExists(L"GDC", L"Height"))
@@ -191,18 +227,22 @@ int SpoofGDCResolution(int realFuncRetValue, int index)
   }
   catch (std::invalid_argument)
   {
-    // Show an error message and reset the ini file pointer
+    // Show an error message and reset the ini file
     MessageBox(NULL, L"Failed to load resolution information from spoofres.ini file", L"Spoof Resolution",
       MB_OK | MB_ICONERROR);
+    std::lock_guard<std::mutex> iniFileLock(gIniFileLock);
+    gIniFile->Reset();
     gIniFile.reset();
 
     return realFuncRetValue;
   }
   catch (std::out_of_range)
   {
-    // Show an error message and reset the ini file pointer
+    // Show an error message and reset the ini file
     MessageBox(NULL, L"Failed to load resolution information from spoofres.ini file", L"Spoof Resolution",
       MB_OK | MB_ICONERROR);
+    std::lock_guard<std::mutex> iniFileLock(gIniFileLock);
+    gIniFile->Reset();
     gIniFile.reset();
 
     return realFuncRetValue;
@@ -213,18 +253,26 @@ int SpoofGDCResolution(int realFuncRetValue, int index)
     return realFuncRetValue;
 
   // Write to the log file
-  if (gLogFile != nullptr)
+  gLogFileLock.lock();
+  if (gLogFile != nullptr && !gLogFile->fail())
   {
-    *gLogFile << L"Spoofed GetDeviceCaps resolution for index ";
+    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
+    //   block
+    std::time_t time = std::time(NULL);
+    #pragma warning(suppress : 4996)
+    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+      L" - Spoofed GetDeviceCaps resolution for index ";
     if (index == HORZRES)
-      *gLogFile << L"HORZRES with the following details: Width = " << *spoofedValue << "\n";
+      *gLogFile << L"HORZRES with the following details: Width = " << *spoofedValue << std::endl;
     else if (index == VERTRES)
-      *gLogFile << L"VERTRES with the following details: Height = " << *spoofedValue << "\n";
+      *gLogFile << L"VERTRES with the following details: Height = " << *spoofedValue << std::endl;
     else if (index == BITSPIXEL)
-      *gLogFile << L"BITSPIXEL with the following details: Bits Per Pixel = " << *spoofedValue << "\n";
-    else if (index == VREFRESH)
-      *gLogFile << L"VREFRESH with the following details: Frequency = " << *spoofedValue << "\n";
+      *gLogFile << L"BITSPIXEL with the following details: Bits Per Pixel = " << *spoofedValue << std::endl;
+    else // if (index == VREFRESH)
+      *gLogFile << L"VREFRESH with the following details: Frequency = " << *spoofedValue << std::endl;
+    gLogFile->flush();
   }  
+  gLogFileLock.unlock();
 
   return *spoofedValue;
 }
@@ -236,8 +284,19 @@ int WINAPI DetouredGetDeviceCaps(HDC hdc, int index)
   int value = WindowsGetDeviceCaps(hdc, index);
 
   // Write to the log file
-  if (gLogFile != nullptr)
-    *gLogFile << L"Detoured GetDeviceCaps function called with the following parameters: index = " << index << "\n";
+  gLogFileLock.lock();
+  if (gLogFile != nullptr && !gLogFile->fail())
+  {
+    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
+    //   block
+    std::time_t time = std::time(NULL);
+    #pragma warning(suppress : 4996)
+    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+      L" - Detoured GetDeviceCaps function called with the following parameters: index = " << index << std::endl;
+    gLogFile->flush();
+  }
+  gLogFileLock.unlock();
+
 
   // Spoof the resolution
   value = SpoofGDCResolution(value, index);
@@ -246,12 +305,17 @@ int WINAPI DetouredGetDeviceCaps(HDC hdc, int index)
 }
 
 // SpoofEDSResolution function
-BOOL SpoofEDSResolution(BOOL realFuncRetValue, LPCWSTR deviceName, DWORD modeNumber, DWORD* fields, DWORD* width,
+static BOOL SpoofEDSResolution(BOOL realFuncRetValue, LPCWSTR deviceName, DWORD modeNumber, DWORD* fields, DWORD* width,
   DWORD* height, DWORD* bitsPerPixel, DWORD* frequency, DWORD* flags, POINTL* position, DWORD* orientation)
 {
   // Check if we do not have a valid ini file
+  gIniFileLock.lock();
   if (gIniFile == nullptr)
+  {
+    gIniFileLock.unlock();
     return realFuncRetValue;
+  }
+  gIniFileLock.unlock();
 
   // Load the resolution information from the ini file
   // Note: we load all of the reolution information from the ini file before assigning any of it to the passed in
@@ -269,38 +333,30 @@ BOOL SpoofEDSResolution(BOOL realFuncRetValue, LPCWSTR deviceName, DWORD modeNum
     std::vector<std::wstring> sections;
     if (modeNumber == ENUM_CURRENT_SETTINGS)
     {
-      if (deviceName != NULL)
-        sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|Current"));
-      else
-        sections.push_back(std::wstring(L"EDS|NULL|Current"));
+      sections.push_back(std::wstring(L"EDS|") + (deviceName != NULL ? deviceName : L"NULL") +
+        std::wstring(L"|Current"));
       sections.push_back(std::wstring(L"EDS|*|Current"));
     }
     else if (modeNumber == ENUM_REGISTRY_SETTINGS)
     {
-      if (deviceName != NULL)
-        sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|Registry"));
-      else
-        sections.push_back(std::wstring(L"EDS|NULL|Registry"));
+      sections.push_back(std::wstring(L"EDS|") + (deviceName != NULL ? deviceName : L"NULL") +
+        std::wstring(L"|Registry"));
       sections.push_back(std::wstring(L"EDS|*|Registry"));
     }
     else
     {
-      if (deviceName != NULL)
-        sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|") + std::to_wstring(modeNumber));
-      else
-        sections.push_back(std::wstring(L"EDS|NULL|") + std::to_wstring(modeNumber));
+      sections.push_back(std::wstring(L"EDS|") + (deviceName != NULL ? deviceName : L"NULL") + std::wstring(L"|") +
+        std::to_wstring(modeNumber));
       sections.push_back(std::wstring(L"EDS|*|") + std::to_wstring(modeNumber));
     }
     if (realFuncRetValue)
     {
-      if (deviceName != NULL)
-        sections.push_back(std::wstring(L"EDS|") + deviceName + std::wstring(L"|*"));
-      else
-        sections.push_back(std::wstring(L"EDS|NULL|*"));
+      sections.push_back(std::wstring(L"EDS|") + (deviceName != NULL ? deviceName : L"NULL") + std::wstring(L"|*"));
       sections.push_back(std::wstring(L"EDS|*|*"));
     }
 
     // Loop through the matching sections
+    std::lock_guard<std::mutex> iniFileLock(gIniFileLock);
     for (std::wstring section : sections)
     {
       // Check if this section exists
@@ -335,9 +391,11 @@ BOOL SpoofEDSResolution(BOOL realFuncRetValue, LPCWSTR deviceName, DWORD modeNum
   }
   catch (std::invalid_argument)
   {
-    // Show an error message and reset the ini file pointer
+    // Show an error message and reset the ini file
     MessageBox(NULL, L"Failed to load resolution information from spoofres.ini file", L"Spoof Resolution",
       MB_OK | MB_ICONERROR);
+    std::lock_guard<std::mutex> iniFileLock(gIniFileLock);
+    gIniFile->Reset();
     gIniFile.reset();
 
     return realFuncRetValue;
@@ -347,6 +405,8 @@ BOOL SpoofEDSResolution(BOOL realFuncRetValue, LPCWSTR deviceName, DWORD modeNum
     // Show an error message and reset the ini file pointer
     MessageBox(NULL, L"Failed to load resolution information from spoofres.ini file", L"Spoof Resolution",
       MB_OK | MB_ICONERROR);
+    std::lock_guard<std::mutex> iniFileLock(gIniFileLock);
+    gIniFile->Reset();
     gIniFile.reset();
 
     return realFuncRetValue;
@@ -359,19 +419,18 @@ BOOL SpoofEDSResolution(BOOL realFuncRetValue, LPCWSTR deviceName, DWORD modeNum
     return realFuncRetValue;
 
   // Write to the log file
-  if (gLogFile != nullptr)
+  gLogFileLock.lock();
+  if (gLogFile != nullptr && !gLogFile->fail())
   {
-    *gLogFile << L"Spoofed EnumDisplaySettings resolution for device ";
-    if (deviceName == NULL)
-      *gLogFile << L"NULL and mode number ";
-    else
-      *gLogFile << deviceName << L" and mode number ";
-    if (modeNumber == ENUM_CURRENT_SETTINGS)
-      *gLogFile << L"ENUM_CURRENT_SETTINGS with the following details: ";
-    else if (modeNumber == ENUM_REGISTRY_SETTINGS)
-      *gLogFile << L"ENUM_REGISTRY_SETTINGS with the following details: ";
-    else
-      *gLogFile << modeNumber << L" with the following details: ";
+    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
+    //   block
+    std::time_t time = std::time(NULL);
+    #pragma warning(suppress : 4996)
+    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+      L" - Spoofed EnumDisplaySettings resolution for device " << (deviceName != NULL ? deviceName : L"NULL") <<
+      L" and mode number " << (modeNumber == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
+      (modeNumber == ENUM_REGISTRY_SETTINGS ? L"ENUM_REGISTRY_SETTINGS" : std::to_wstring(modeNumber))) <<
+      L" with the following details: ";
     if (spoofedWidth != nullptr)
       *gLogFile << L"Width = " << *spoofedWidth;
     if (spoofedWidth != nullptr && (spoofedHeight != nullptr || spoofedBitsPerPixel != nullptr ||
@@ -409,9 +468,11 @@ BOOL SpoofEDSResolution(BOOL realFuncRetValue, LPCWSTR deviceName, DWORD modeNum
         (spoofedOrientation != nullptr))
       *gLogFile << L", ";
     if (spoofedOrientation != nullptr)
-      *gLogFile << L"\nOrientation = " << *spoofedOrientation;
-    *gLogFile << "\n";
+      *gLogFile << L"Orientation = " << *spoofedOrientation;
+    *gLogFile << std::endl;
+    gLogFile->flush();
   }
+  gLogFileLock.unlock();
 
   // Spoof the resolution information
   if (spoofedWidth != nullptr)
@@ -471,20 +532,21 @@ BOOL WINAPI DetouredEnumDisplaySettingsA(LPCSTR lpszDeviceName, DWORD iModeNum, 
   }
 
   // Write to the log file
-  if (gLogFile != nullptr)
+  gLogFileLock.lock();
+  if (gLogFile != nullptr && !gLogFile->fail())
   {
-    *gLogFile << L"Detoured EnumDisplaySettingsA function called with the following parameters: lpszDeviceName = ";
-    if (deviceName == nullptr)
-      *gLogFile << "NULL, iModeNum = ";
-    else
-      *gLogFile << *deviceName << L", iModeNum = ";
-    if (iModeNum == ENUM_CURRENT_SETTINGS)
-      *gLogFile << L"ENUM_CURRENT_SETTINGS\n";
-    else if (iModeNum == ENUM_REGISTRY_SETTINGS)
-      *gLogFile << L"ENUM_REGISTRY_SETTINGS\n";
-    else
-      *gLogFile << iModeNum << "\n";
+    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
+    //   block
+    std::time_t time = std::time(NULL);
+    #pragma warning(suppress : 4996)
+    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+      L" - Detoured EnumDisplaySettingsA function called with the following parameters: lpszDeviceName = " <<
+      (deviceName != nullptr ? *deviceName : L"NULL") << L", iModeNum = " <<
+      (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
+      (iModeNum == ENUM_REGISTRY_SETTINGS ? L"ENUM_REGISTRY_SETTINGS" : std::to_wstring(iModeNum))) << std::endl;
+    gLogFile->flush();
   }
+  gLogFileLock.unlock();
 
   // Spoof the resolution
   success = SpoofEDSResolution(success, (deviceName != nullptr ? deviceName->c_str() : NULL), iModeNum,
@@ -501,20 +563,21 @@ BOOL WINAPI DetouredEnumDisplaySettingsW(LPCWSTR lpszDeviceName, DWORD iModeNum,
   BOOL success = WindowsEnumDisplaySettingsW(lpszDeviceName, iModeNum, lpDevMode);
 
   // Write to the log file
-  if (gLogFile != nullptr)
+  gLogFileLock.lock();
+  if (gLogFile != nullptr && !gLogFile->fail())
   {
-    *gLogFile << L"Detoured EnumDisplaySettingsW function called with the following parameters: lpszDeviceName = ";
-    if (lpszDeviceName == NULL)
-      *gLogFile << L"NULL, iModeNum = ";
-    else
-      *gLogFile << lpszDeviceName << L", iModeNum = ";
-    if (iModeNum == ENUM_CURRENT_SETTINGS)
-      *gLogFile << L"ENUM_CURRENT_SETTINGS\n";
-    else if (iModeNum == ENUM_REGISTRY_SETTINGS)
-      *gLogFile << L"ENUM_REGISTRY_SETTINGS\n";
-    else
-      *gLogFile << iModeNum << "\n";
+    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
+    //   block
+    std::time_t time = std::time(NULL);
+    #pragma warning(suppress : 4996)
+    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+      L" - Detoured EnumDisplaySettingsW function called with the following parameters: lpszDeviceName = " <<
+      (lpszDeviceName != NULL ? lpszDeviceName : L"NULL") << L", iModeNum = " <<
+      (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
+      (iModeNum == ENUM_REGISTRY_SETTINGS ? L"ENUM_REGISTRY_SETTINGS" : std::to_wstring(iModeNum))) << std::endl;
+    gLogFile->flush();
   }
+  gLogFileLock.unlock();
 
   // Spoof the resolution
   success = SpoofEDSResolution(success, lpszDeviceName, iModeNum, &lpDevMode->dmFields, &lpDevMode->dmPelsWidth,
@@ -541,20 +604,21 @@ BOOL WINAPI DetouredEnumDisplaySettingsExA(LPCSTR lpszDeviceName, DWORD iModeNum
   }
 
   // Write to the log file
-  if (gLogFile != nullptr)
+  gLogFileLock.lock();
+  if (gLogFile != nullptr && !gLogFile->fail())
   {
-    *gLogFile << L"Detoured EnumDisplaySettingsExA function called with the following parameters: lpszDeviceName = ";
-    if (deviceName == nullptr)
-      *gLogFile << L"NULL, iModeNum = ";
-    else
-      *gLogFile << *deviceName << L", iModeNum = ";
-    if (iModeNum == ENUM_CURRENT_SETTINGS)
-      *gLogFile << L"ENUM_CURRENT_SETTINGS\n";
-    else if (iModeNum == ENUM_REGISTRY_SETTINGS)
-      *gLogFile << L"ENUM_REGISTRY_SETTINGS\n";
-    else
-      *gLogFile << iModeNum << "\n";
+    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
+    //   block
+    std::time_t time = std::time(NULL);
+    #pragma warning(suppress : 4996)
+    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+      L" - Detoured EnumDisplaySettingsExA function called with the following parameters: lpszDeviceName = " <<
+      (deviceName != nullptr ? *deviceName : L"NULL") << L", iModeNum = " <<
+      (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
+      (iModeNum == ENUM_REGISTRY_SETTINGS ? L"ENUM_REGISTRY_SETTINGS" : std::to_wstring(iModeNum))) << std::endl;
+    gLogFile->flush();
   }
+  gLogFileLock.unlock();
 
   // Spoof the resolution
   success = SpoofEDSResolution(success, (deviceName != nullptr ? deviceName->c_str() : NULL), iModeNum,
@@ -572,17 +636,21 @@ BOOL WINAPI DetouredEnumDisplaySettingsExW(LPCWSTR lpszDeviceName, DWORD iModeNu
   BOOL success = WindowsEnumDisplaySettingsExW(lpszDeviceName, iModeNum, lpDevMode, dwFlags);
 
   // Write to the log file
-  if (gLogFile != nullptr)
+  gLogFileLock.lock();
+  if (gLogFile != nullptr && !gLogFile->fail())
   {
-    *gLogFile << L"Detoured EnumDisplaySettingsExW function called with the following parameters: lpszDeviceName = " <<
-      lpszDeviceName << L", iModeNum = ";
-    if (iModeNum == ENUM_CURRENT_SETTINGS)
-      *gLogFile << L"ENUM_CURRENT_SETTINGS\n";
-    else if (iModeNum == ENUM_REGISTRY_SETTINGS)
-      *gLogFile << L"ENUM_REGISTRY_SETTINGS\n";
-    else
-      *gLogFile << iModeNum << "\n";
+    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
+    //   block
+    std::time_t time = std::time(NULL);
+    #pragma warning(suppress : 4996)
+    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+      L" - Detoured EnumDisplaySettingsExW function called with the following parameters: lpszDeviceName = " <<
+      (lpszDeviceName != NULL ? lpszDeviceName : L"NULL") << L", iModeNum = " <<
+      (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
+      (iModeNum == ENUM_REGISTRY_SETTINGS ? L"ENUM_REGISTRY_SETTINGS" : std::to_wstring(iModeNum))) << std::endl;
+    gLogFile->flush();
   }
+  gLogFileLock.unlock();
 
   // Spoof the resolution
   success = SpoofEDSResolution(success, lpszDeviceName, iModeNum, &lpDevMode->dmFields, &lpDevMode->dmPelsWidth,
@@ -623,12 +691,13 @@ static void LoadIniFile(HMODULE module)
   gIniFile->SetUnicode();
   if (gIniFile->LoadFile(path.c_str()) < 0)
   {
-    // Show an error message and reset the ini file pointer
+    // Show an error message and reset the ini file
     // Note: std::format adds a significant amount of additional code into the DLL so instead we are using stdio
     //   functions to compose the messages
     wchar_t message[256];
     swprintf_s(message, L"Failed to open %s file", path.c_str());
     MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
+    gIniFile->Reset();
     gIniFile.reset();
 
     return;
@@ -649,11 +718,18 @@ static void LoadLogFile(HMODULE module)
   // Check if the logging key is not set to On, Yes, or True using case insensitive comparisons
   std::wstring logging = gIniFile->GetValue(L"SpoofResolution", L"Logging");
   if (!std::ranges::equal(logging, std::wstring(L"On"),
-      [](const WCHAR a, const WCHAR b) { return std::tolower(a) == std::tolower(b); }) &&
-      !std::ranges::equal(logging, std::wstring(L"Yes"),
-      [](const WCHAR a, const WCHAR b) { return std::tolower(a) == std::tolower(b); }) &&
-      !std::ranges::equal(logging, std::wstring(L"True"),
-      [](const WCHAR a, const WCHAR b) { return std::tolower(a) == std::tolower(b); }))
+      [](wchar_t a, wchar_t b)
+      {
+        return std::tolower(a) == std::tolower(b);
+      }) && !std::ranges::equal(logging, std::wstring(L"Yes"),
+      [](wchar_t a, wchar_t b)
+      {
+        return std::tolower(a) == std::tolower(b);
+      }) && !std::ranges::equal(logging, std::wstring(L"True"),
+      [](wchar_t a, wchar_t b)
+      {
+        return std::tolower(a) == std::tolower(b);
+      }))
     return;
 
   // Check if we have a LogFile key in the ini file and load the log file path otherwise use the DLL file path as the
@@ -682,21 +758,22 @@ static void LoadLogFile(HMODULE module)
 
   // Open the log file
   gLogFile = std::make_unique<std::wofstream>(path, std::wofstream::out);
-  if (!*gLogFile)
+  if (gLogFile->fail())
   {
-    // Show an error message and reset the log file pointer
+    // Show an error message and reset the log file
     // Note: std::format adds a significant amount of additional code into the DLL so instead we are using stdio
     //   functions to compose the messages
     wchar_t message[256];
     swprintf_s(message, L"Failed to open %s file", path.c_str());
     MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
+    gLogFile->close();  
     gLogFile.reset();
 
     return;
   }
 
   // Enable UTF-8 support
-  gLogFile->imbue(std::locale(std::locale::empty(), new std::codecvt_byname<wchar_t, char, mbstate_t>("en_US.UTF-8")));
+  gLogFile->imbue(std::locale("en_US.UTF-8"));
 }
 
 // DllMain function
@@ -718,8 +795,17 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     LoadLogFile(hModule);
 
     // Write to the log file
-    if (gLogFile != nullptr)
-      *gLogFile << L"DllMain function called with the following parameters: ul_reason_for_call = DLL_PROCESS_ATTACH\n";
+    if (gLogFile != nullptr && !gLogFile->fail())
+    {
+      // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
+      //   area
+      std::time_t time = std::time(NULL);
+      #pragma warning(suppress : 4996)
+      *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+        L" - DllMain function called with the following parameters: ul_reason_for_call = DLL_PROCESS_ATTACH" <<
+        std::endl;
+      gLogFile->flush();
+    }
 
     // Check if we have a valid ini file
     if (gIniFile != nullptr)
@@ -736,8 +822,16 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         gDetouredFunctions.GetSystemMetrics = true;
 
         // Write to the log file
-        if (gLogFile != nullptr)
-          *gLogFile << L"Detouring GetSystemMetrics function\n";
+        if (gLogFile != nullptr && !gLogFile->fail())
+        {
+          // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread
+          //   safe area
+          std::time_t time = std::time(NULL);
+          #pragma warning(suppress : 4996)
+          *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+            L" - Detouring GetSystemMetrics function" << std::endl;
+          gLogFile->flush();
+        }
       }
 
       // Check if there is a GDC section in the ini file
@@ -748,15 +842,33 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         gDetouredFunctions.GetDeviceCaps = true;
 
         // Write to the log file
-        if (gLogFile != nullptr)
-          *gLogFile << L"Detouring GetDeviceCaps function\n";
+        if (gLogFile != nullptr && !gLogFile->fail())
+        {
+          // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread
+          //   safe area
+          std::time_t time = std::time(NULL);
+          #pragma warning(suppress : 4996)
+          *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+            L" - Detouring GetDeviceCaps function" << std::endl;
+          gLogFile->flush();
+        }
       }
 
-      // Check if there are any EDS sections in the ini file
+      // Get all of the sections in the ini file
       std::list<CSimpleIni::Entry> sections;
       gIniFile->GetAllSections(sections);
-      if (std::find_if(sections.begin(), sections.end(),
-          [&](CSimpleIni::Entry& entry) { return std::wstring(entry.pItem).starts_with(L"EDS"); }) != sections.end())
+
+      // Check if there are any sections that start with EDS| using case insensitive comparisons
+      if (std::ranges::find_if(sections,
+        [&](CSimpleIni::Entry& entry)
+        {
+          std::wstring match = std::wstring(L"EDS|");
+          return std::ranges::mismatch(std::wstring(entry.pItem), match,
+            [](wchar_t a, wchar_t b)
+            {
+              return std::tolower(a) == std::tolower(b);
+            }).in2 == match.end();
+        }) != sections.end())
       {
         // Detour the EnumDisplaySettings functions
         DetourAttach(&(PVOID&)WindowsEnumDisplaySettingsA, DetouredEnumDisplaySettingsA);
@@ -769,8 +881,16 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         gDetouredFunctions.EnumDisplaySettingsExW = true;
 
         // Write to the log file
-        if (gLogFile != nullptr)
-          *gLogFile << L"Detouring EnumDisplaySettings functions\n";
+        if (gLogFile != nullptr && !gLogFile->fail())
+        {
+          // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread
+          //   safe area
+          std::time_t time = std::time(NULL);
+          #pragma warning(suppress : 4996)
+          *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+            L" - Detouring EnumDisplaySettings functions" << std::endl;
+          gLogFile->flush();
+        }
       }
 
       // Finish the detour process
@@ -780,14 +900,19 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     break;
   case DLL_PROCESS_DETACH:
     // Write to the log file
-    if (gLogFile != nullptr)
-      *gLogFile << L"DllMain function called with the following parameters: ul_reason_for_call = DLL_PROCESS_DETACH\n";
+    if (gLogFile != nullptr && !gLogFile->fail())
+    {
+      // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
+      //   block
+      std::time_t time = std::time(NULL);
+      #pragma warning(suppress : 4996)
+      *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+        L" - DllMain function called with the following parameters: ul_reason_for_call = DLL_PROCESS_DETACH" <<
+        std::endl;
+      gLogFile->flush();
+    }
 
-    // Close the log file
-    if (gLogFile != nullptr)
-      gLogFile->close();
-
-    // Detach the function detours
+    // Detach the detoured functions
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     if (gDetouredFunctions.GetSystemMetrics)
@@ -803,6 +928,20 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     if (gDetouredFunctions.EnumDisplaySettingsExW)
       DetourDetach(&(PVOID&)WindowsEnumDisplaySettingsExW, DetouredEnumDisplaySettingsExW);
     DetourTransactionCommit();
+
+    // Close the log file
+    if (gLogFile != nullptr)
+    {
+      gLogFile->close();
+      gLogFile.reset();
+    }
+
+    // Close the ini file
+    if (gIniFile != nullptr)
+    {
+      gIniFile->Reset();
+      gIniFile.reset();
+    }
 
     break;
   }
