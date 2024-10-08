@@ -1,4 +1,5 @@
-﻿Microsoft Visual Studio Solution File, Format Version 12.00
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.11.35312.102
 MinimumVisualStudioVersion = 10.0.40219.1
@@ -10,10 +11,6 @@ Global
 		Debug|x86 = Debug|x86
 		Release|x64 = Release|x64
 		Release|x86 = Release|x86
-		Release (Test)|x64 = Release (Test)|x64
-		Release (Test)|x86 = Release (Test)|x86
-		Release (Verbose Test)|x64 = Release (Verbose Test)|x64
-		Release (Verbose Test)|x86 = Release (Verbose Test)|x86
 		Release (version.dll)|x64 = Release (version.dll)|x64
 		Release (version.dll)|x86 = Release (version.dll)|x86
 		Release (winhttp.dll)|x64 = Release (winhttp.dll)|x64
@@ -28,14 +25,6 @@ Global
 		{0497C902-A640-4DF3-957E-31A24598E65E}.Release|x64.Build.0 = Release|x64
 		{0497C902-A640-4DF3-957E-31A24598E65E}.Release|x86.ActiveCfg = Release|Win32
 		{0497C902-A640-4DF3-957E-31A24598E65E}.Release|x86.Build.0 = Release|Win32
-		{0497C902-A640-4DF3-957E-31A24598E65E}.Release (Test)|x64.ActiveCfg = Release (Test)|x64
-		{0497C902-A640-4DF3-957E-31A24598E65E}.Release (Test)|x64.Build.0 = Release (Test)|x64
-		{0497C902-A640-4DF3-957E-31A24598E65E}.Release (Test)|x86.ActiveCfg = Release (Test)|Win32
-		{0497C902-A640-4DF3-957E-31A24598E65E}.Release (Test)|x86.Build.0 = Release (Test)|Win32
-		{0497C902-A640-4DF3-957E-31A24598E65E}.Release (Verbose Test)|x64.ActiveCfg = Release (Verbose Test)|x64
-		{0497C902-A640-4DF3-957E-31A24598E65E}.Release (Verbose Test)|x64.Build.0 = Release (Verbose Test)|x64
-		{0497C902-A640-4DF3-957E-31A24598E65E}.Release (Verbose Test)|x86.ActiveCfg = Release (Verbose Test)|Win32
-		{0497C902-A640-4DF3-957E-31A24598E65E}.Release (Verbose Test)|x86.Build.0 = Release (Verbose Test)|Win32
 		{0497C902-A640-4DF3-957E-31A24598E65E}.Release (version.dll)|x64.ActiveCfg = Release (version.dll)|x64
 		{0497C902-A640-4DF3-957E-31A24598E65E}.Release (version.dll)|x64.Build.0 = Release (version.dll)|x64
 		{0497C902-A640-4DF3-957E-31A24598E65E}.Release (version.dll)|x86.ActiveCfg = Release (version.dll)|Win32
