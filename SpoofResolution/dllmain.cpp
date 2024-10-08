@@ -12,49 +12,40 @@
 #if defined(VERSION_DLL_VERSION) || defined (WINHTTP_DLL_VERSION)
 void HandleException(DllProxy::ErrorCode code)
 {
-  // Switch based on the error code
+  // Switch based on the error code and compose an error message
   // Note: std::format adds a significant amount of additional code into the DLL so instead we are using stdio functions
   //       to compose the messages
   wchar_t message[256];
   switch (code)
   {
   case DllProxy::ErrorCode::InvalidModuleBase:
-    // Display error message
     swprintf_s(message, L"Quick DLL Proxy reported the following error:\nCode: %u\n"
       "Message: Unable to query base address of this DLL", code);
-    MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
     break;
   case DllProxy::ErrorCode::InvalidModuleHeaders:
-    // Display error message
     swprintf_s(message, L"Quick DLL Proxy reported the following error:\nCode: %u\n"
       "Message: Invalid DOS, NT, or export directory headers", code);
-    MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
     break;
   case DllProxy::ErrorCode::VirtualProtectFailed:
-    // Display error message
     swprintf_s(message, L"Quick DLL Proxy reported the following error:\nCode: %u\n"
       "Message: A call to VirtualProtect failed", code);
-    MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
     break;
   case DllProxy::ErrorCode::LibraryNotFound:
-    // Display error message
     swprintf_s(message, L"Quick DLL Proxy reported the following error:\nCode: %u\n"
       "Message: Failed to load original module for proxying", code);
-    MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
     break;
   case DllProxy::ErrorCode::ExportNotFound:
-    // Display error message
     swprintf_s(message, L"Quick DLL Proxy reported the following error:\nCode: %u\n"
       "Message: Failed to locate an exported function in the original module", code);
-    MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
     break;
   case DllProxy::ErrorCode::ExportNotResolved:
-    // Display error message
     swprintf_s(message, L"Quick DLL Proxy reported the following error:\nCode: %u\n"
       "Message: A proxy export was called but a real function pointer wasn't resolved yet", code);
-    MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
     break;
   }
+
+  // Show an error message
+  MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
 }
 
 // Fix use of __unaligned in the Quick DLL Proxy for x86 DLLs
@@ -164,7 +155,6 @@ static int SpoofGSMResolution(int realFuncRetValue, int index)
       *gLogFile << L"SM_CXSCREEN with the following details: Width = " << *spoofedValue << std::endl;
     else // if (index == SM_CYSCREEN)
       *gLogFile << L"SM_CYSCREEN with the following details: Height = " << *spoofedValue << std::endl;
-    gLogFile->flush();
   }
   gLogFileLock.unlock();
 
@@ -187,7 +177,6 @@ int WINAPI DetouredGetSystemMetrics(int nIndex)
     #pragma warning(suppress : 4996)
     *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
       L" - Detoured GetSystemMetrics function called with the following parameters: nIndex = " << nIndex << std::endl;
-    gLogFile->flush();
   }
   gLogFileLock.unlock();
 
@@ -270,7 +259,6 @@ static int SpoofGDCResolution(int realFuncRetValue, int index)
       *gLogFile << L"BITSPIXEL with the following details: Bits Per Pixel = " << *spoofedValue << std::endl;
     else // if (index == VREFRESH)
       *gLogFile << L"VREFRESH with the following details: Frequency = " << *spoofedValue << std::endl;
-    gLogFile->flush();
   }  
   gLogFileLock.unlock();
 
@@ -293,7 +281,6 @@ int WINAPI DetouredGetDeviceCaps(HDC hdc, int index)
     #pragma warning(suppress : 4996)
     *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
       L" - Detoured GetDeviceCaps function called with the following parameters: index = " << index << std::endl;
-    gLogFile->flush();
   }
   gLogFileLock.unlock();
 
@@ -470,7 +457,6 @@ static BOOL SpoofEDSResolution(BOOL realFuncRetValue, LPCWSTR deviceName, DWORD 
     if (spoofedOrientation != nullptr)
       *gLogFile << L"Orientation = " << *spoofedOrientation;
     *gLogFile << std::endl;
-    gLogFile->flush();
   }
   gLogFileLock.unlock();
 
@@ -544,7 +530,6 @@ BOOL WINAPI DetouredEnumDisplaySettingsA(LPCSTR lpszDeviceName, DWORD iModeNum, 
       (deviceName != nullptr ? *deviceName : L"NULL") << L", iModeNum = " <<
       (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
       (iModeNum == ENUM_REGISTRY_SETTINGS ? L"ENUM_REGISTRY_SETTINGS" : std::to_wstring(iModeNum))) << std::endl;
-    gLogFile->flush();
   }
   gLogFileLock.unlock();
 
@@ -575,7 +560,6 @@ BOOL WINAPI DetouredEnumDisplaySettingsW(LPCWSTR lpszDeviceName, DWORD iModeNum,
       (lpszDeviceName != NULL ? lpszDeviceName : L"NULL") << L", iModeNum = " <<
       (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
       (iModeNum == ENUM_REGISTRY_SETTINGS ? L"ENUM_REGISTRY_SETTINGS" : std::to_wstring(iModeNum))) << std::endl;
-    gLogFile->flush();
   }
   gLogFileLock.unlock();
 
@@ -616,7 +600,6 @@ BOOL WINAPI DetouredEnumDisplaySettingsExA(LPCSTR lpszDeviceName, DWORD iModeNum
       (deviceName != nullptr ? *deviceName : L"NULL") << L", iModeNum = " <<
       (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
       (iModeNum == ENUM_REGISTRY_SETTINGS ? L"ENUM_REGISTRY_SETTINGS" : std::to_wstring(iModeNum))) << std::endl;
-    gLogFile->flush();
   }
   gLogFileLock.unlock();
 
@@ -648,7 +631,6 @@ BOOL WINAPI DetouredEnumDisplaySettingsExW(LPCWSTR lpszDeviceName, DWORD iModeNu
       (lpszDeviceName != NULL ? lpszDeviceName : L"NULL") << L", iModeNum = " <<
       (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
       (iModeNum == ENUM_REGISTRY_SETTINGS ? L"ENUM_REGISTRY_SETTINGS" : std::to_wstring(iModeNum))) << std::endl;
-    gLogFile->flush();
   }
   gLogFileLock.unlock();
 
@@ -772,8 +754,8 @@ static void LoadLogFile(HMODULE module)
     return;
   }
 
-  // Enable UTF-8 support
-  gLogFile->imbue(std::locale("en_US.UTF-8"));
+  // Enable UTF-8 support using an empty locale with the codecvt facet from the en_US.UTF-8 locale
+  gLogFile->imbue(std::locale(std::locale::empty(), new std::codecvt_byname<wchar_t, char, std::mbstate_t>("en_US.UTF-8")));
 }
 
 // DllMain function
@@ -804,7 +786,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
       *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
         L" - DllMain function called with the following parameters: ul_reason_for_call = DLL_PROCESS_ATTACH" <<
         std::endl;
-      gLogFile->flush();
     }
 
     // Check if we have a valid ini file
@@ -830,7 +811,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
           #pragma warning(suppress : 4996)
           *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
             L" - Detouring GetSystemMetrics function" << std::endl;
-          gLogFile->flush();
         }
       }
 
@@ -850,7 +830,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
           #pragma warning(suppress : 4996)
           *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
             L" - Detouring GetDeviceCaps function" << std::endl;
-          gLogFile->flush();
         }
       }
 
@@ -889,7 +868,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
           #pragma warning(suppress : 4996)
           *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
             L" - Detouring EnumDisplaySettings functions" << std::endl;
-          gLogFile->flush();
         }
       }
 
@@ -909,7 +887,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
       *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
         L" - DllMain function called with the following parameters: ul_reason_for_call = DLL_PROCESS_DETACH" <<
         std::endl;
-      gLogFile->flush();
     }
 
     // Detach the detoured functions
