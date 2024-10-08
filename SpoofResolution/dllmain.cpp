@@ -749,7 +749,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
         // Write to the log file
         if (gLogFile != nullptr)
-          *gLogFile << L"Detouring getDeviceCaps function\n";
+          *gLogFile << L"Detouring GetDeviceCaps function\n";
       }
 
       // Check if there are any EDS sections in the ini file
