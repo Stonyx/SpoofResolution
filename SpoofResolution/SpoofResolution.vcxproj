@@ -151,20 +151,20 @@
     <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);.;</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <TargetName>spoofres</TargetName>
     <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);.;</IncludePath>
+    <TargetName>spoofres</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <TargetName>spoofres</TargetName>
     <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);.;</IncludePath>
+    <TargetName>spoofres</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release (version.dll)|x64'">
-    <TargetName>version</TargetName>
     <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);.;</IncludePath>
+    <TargetName>version</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release (winhttp.dll)|x64'">
-    <TargetName>winhttp</TargetName>
     <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);.;</IncludePath>
+    <TargetName>winhttp</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -323,16 +323,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <None Include="spoofres_exports.def" />
+    <None Include="version_exports.inc" />
+    <None Include="winhttp_exports.inc" />
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="Detours\creatwth.cpp" />
     <ClCompile Include="Detours\detours.cpp" />
     <ClCompile Include="Detours\disasm.cpp" />
     <ClCompile Include="Detours\modules.cpp" />
     <ClCompile Include="dllmain.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="spoofres_exports.def" />
-    <None Include="version_exports.inc" />
-    <None Include="winhttp_exports.inc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
