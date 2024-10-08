@@ -1,20 +1,32 @@
 # Spoof Resolution
 
-A DLL based approach to spoofing the resolution information that an application or game receives from various Windows API calls.  Currently the following 4 API functions are detoured to provide spoofed resolution information to applications or games:
+A DLL based approach to spoofing the resolution information that an application or game receives from various Windows API calls.  Currently the following API functions are detoured to provide spoofed resolution information to applications or games:
 
+- GetSystemMetrics
+- GetDeviceCaps
 - EnumDisplaySettingsA
 - EnumDisplaySettingsW
 - EnumDisplaySettingsExA
 - EnumDisplaySettingsExW
 
-These represent the low level functions that applications and games use to retrive resolution information.  In the future higher level functions will hopefully be added to support more applications and games.
-
 To spoof the resolution for an application or game, place the `withdll.exe` and `spoofres.dll` files in the application or game folder and create a `spoofres.ini` file in the same folder with the following format:
 
 ```
-[Device|Mode]
-Width = 1920
-Height = 1080
+[SpoofResolution]
+Logging = On
+LogFile = C:\Path\To\LogFile.log
+
+[GSM]
+Width = 3840
+Height = 2160
+
+[GDC]
+Width = 3840
+Height = 2160
+
+[EDS|Device|Mode]
+Width = 3840
+Height = 2160
 BitsPerPixel = 32
 Frequency = 60
 Flags = 0
@@ -28,17 +40,25 @@ where `Device` is the device that the application or game is inquiring about and
 For example this sample `spoofres.ini` file would spoof the width and height for all calls to any of the above Windows API functions:
 
 ```
-[*|*]
-Width = 1920
-Height = 1080
+[GSM]
+Width = 3840
+Height = 2160
+
+[GDC]
+Width = 3840
+Height = 2160
+
+[EDS|*|*]
+Width = 3840
+Height = 2160
 ```
 
-and this sample `spoofres.ini` file would spoof the width and height and frequency (ie: refresh rate) for any calls to the above Windows API functions that request resolution information about the first monitor's current resolution:
+and this sample `spoofres.ini` file would spoof the width and height and frequency (ie: refresh rate) for any calls to the EnumDisplaySetting functions that request resolution information about the first monitor's current resolution:
 
 ```
-[\\.\DISPLAY1|Current]
-Width = 1920
-Height = 1080
+[EDS|\\.\DISPLAY1|Current]
+Width = 3840
+Height = 2160
 Frequency = 60
 ```
 
