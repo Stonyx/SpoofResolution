@@ -75,6 +75,8 @@ void HandleException(DllProxy::ErrorCode code)
 #endif
 
 // Define and/or declare needed global variables
+std::unique_ptr<CSimpleIni> gIniFile = std::unique_ptr<CSimpleIni>(nullptr);
+std::shared_ptr<std::wofstream> gLogFile = std::shared_ptr<std::wofstream>(nullptr);
 static int(WINAPI* WindowsGetSystemMetrics)(int nIndex) = GetSystemMetrics;
 static int(WINAPI* WindowsGetDeviceCaps)(HDC hdc, int index) = GetDeviceCaps;
 static BOOL(WINAPI* WindowsEnumDisplaySettingsA)(LPCSTR lpszDeviceName, DWORD iModeNum, DEVMODEA* lpDevMode) =
@@ -93,115 +95,6 @@ struct {
   bool EnumDisplaySettingsExA : 1 = false;
   bool EnumDisplaySettingsExW : 1 = false;
 } gDetouredFunctions;
-std::unique_ptr<CSimpleIni> gIniFile = std::unique_ptr<CSimpleIni>(nullptr);
-std::shared_ptr<std::wofstream> gLogFile = std::shared_ptr<std::wofstream>(nullptr);
-
-// GetIniFile function
-static void LoadIniFile(HMODULE module)
-{
-  // Get the full path to this DLL
-  std::wstring path(MAX_PATH, 0);
-  if (GetModuleFileName(module, &path[0], MAX_PATH) == 0)
-  {
-    // Show an error message
-    MessageBox(NULL, L"Failed to get path to Spoof Resolution DLL file", L"Spoof Resolution", MB_OK | MB_ICONERROR);
-
-    return;
-  }
-
-  // Remove the file name from the path and replace it with spoofres.ini
-  path.erase(path.rfind(std::filesystem::path::preferred_separator) + 1);
-  path += L"spoofres.ini";
-
-  // Check if the ini file does not exist
-  if (!std::filesystem::exists(path))
-  {
-    // Show an error message
-    MessageBox(NULL, L"Failed to locate spoofres.ini file", L"Spoof Resolution", MB_OK | MB_ICONERROR);
-
-    return;
-  }
-
-  // Open the ini file
-  gIniFile = std::make_unique<CSimpleIni>();
-  gIniFile->SetUnicode();
-  if (gIniFile->LoadFile(path.c_str()) < 0)
-  {
-    // Show an error message and reset the ini file pointer
-    // Note: std::format adds a significant amount of additional code into the DLL so instead we are using stdio
-    //   functions to compose the messages
-    wchar_t message[256];
-    swprintf_s(message, L"Failed to open %s file", path.c_str());
-    MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
-    gIniFile.reset();
-
-    return;
-  }
-}
-
-// LoadLogFile function
-static void LoadLogFile(HMODULE module)
-{
-  // Check if we do not have a valid ini file
-  if (gIniFile == nullptr)
-    return;
-
-  // Check if we do not have a logging key in the ini file
-  if (!gIniFile->KeyExists(L"SpoofResolution", L"Logging"))
-    return;
-
-  // Check if the logging key is not set to On, Yes, or True using case insensitive comparisons
-  std::wstring logging = gIniFile->GetValue(L"SpoofResolution", L"Logging");
-  if (!std::ranges::equal(logging, std::wstring(L"On"),
-      [](const WCHAR a, const WCHAR b) { return std::tolower(a) == std::tolower(b); }) &&
-      !std::ranges::equal(logging, std::wstring(L"Yes"),
-      [](const WCHAR a, const WCHAR b) { return std::tolower(a) == std::tolower(b); }) &&
-      !std::ranges::equal(logging, std::wstring(L"True"),
-      [](const WCHAR a, const WCHAR b) { return std::tolower(a) == std::tolower(b); }))
-    return;
-
-  // Check if we have a LogFile key in the ini file and load the log file path otherwise use the DLL file path as the
-  //   log file path base
-  std::wstring path;
-  if (gIniFile->KeyExists(L"SpoofResolution", L"LogFile"))
-  {
-    path = gIniFile->GetValue(L"SpoofResolution", L"LogFile");
-  }  
-  else
-  {
-    // Get the full path to this DLL
-    path = std::wstring(MAX_PATH, 0);
-    if (GetModuleFileName(module, &path[0], MAX_PATH) == 0)
-    {
-      // Show an error message
-      MessageBox(NULL, L"Failed to get path to Spoof Resolution DLL file", L"Spoof Resolution", MB_OK | MB_ICONERROR);
-
-      return;
-    }
-
-    // Remove the file name from the path and replace it with spoofres.log
-    path.erase(path.rfind(std::filesystem::path::preferred_separator) + 1);
-    path += L"spoofres.log";
-  }
-
-  // Open the log file
-  gLogFile = std::make_unique<std::wofstream>(path, std::wofstream::out);
-  if (!*gLogFile)
-  {
-    // Show an error message and reset the log file pointer
-    // Note: std::format adds a significant amount of additional code into the DLL so instead we are using stdio
-    //   functions to compose the messages
-    wchar_t message[256];
-    swprintf_s(message, L"Failed to open %s file", path.c_str());
-    MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
-    gLogFile.reset();
-
-    return;
-  }
-
-  // Enable UTF-8 support
-  gLogFile->imbue(std::locale(std::locale::empty(), new std::codecvt_byname<wchar_t, char, mbstate_t>("en_US.UTF-8")));
-}
 
 // SpoofGSMResolution function
 int SpoofGSMResolution(int realFuncRetValue, int index)
@@ -697,6 +590,113 @@ BOOL WINAPI DetouredEnumDisplaySettingsExW(LPCWSTR lpszDeviceName, DWORD iModeNu
     &lpDevMode->dmPosition, &lpDevMode->dmDisplayOrientation);
 
   return success;
+}
+
+// GetIniFile function
+static void LoadIniFile(HMODULE module)
+{
+  // Get the full path to this DLL
+  std::wstring path(MAX_PATH, 0);
+  if (GetModuleFileName(module, &path[0], MAX_PATH) == 0)
+  {
+    // Show an error message
+    MessageBox(NULL, L"Failed to get path to Spoof Resolution DLL file", L"Spoof Resolution", MB_OK | MB_ICONERROR);
+
+    return;
+  }
+
+  // Remove the file name from the path and replace it with spoofres.ini
+  path.erase(path.rfind(std::filesystem::path::preferred_separator) + 1);
+  path += L"spoofres.ini";
+
+  // Check if the ini file does not exist
+  if (!std::filesystem::exists(path))
+  {
+    // Show an error message
+    MessageBox(NULL, L"Failed to locate spoofres.ini file", L"Spoof Resolution", MB_OK | MB_ICONERROR);
+
+    return;
+  }
+
+  // Open the ini file
+  gIniFile = std::make_unique<CSimpleIni>();
+  gIniFile->SetUnicode();
+  if (gIniFile->LoadFile(path.c_str()) < 0)
+  {
+    // Show an error message and reset the ini file pointer
+    // Note: std::format adds a significant amount of additional code into the DLL so instead we are using stdio
+    //   functions to compose the messages
+    wchar_t message[256];
+    swprintf_s(message, L"Failed to open %s file", path.c_str());
+    MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
+    gIniFile.reset();
+
+    return;
+  }
+}
+
+// LoadLogFile function
+static void LoadLogFile(HMODULE module)
+{
+  // Check if we do not have a valid ini file
+  if (gIniFile == nullptr)
+    return;
+
+  // Check if we do not have a logging key in the ini file
+  if (!gIniFile->KeyExists(L"SpoofResolution", L"Logging"))
+    return;
+
+  // Check if the logging key is not set to On, Yes, or True using case insensitive comparisons
+  std::wstring logging = gIniFile->GetValue(L"SpoofResolution", L"Logging");
+  if (!std::ranges::equal(logging, std::wstring(L"On"),
+      [](const WCHAR a, const WCHAR b) { return std::tolower(a) == std::tolower(b); }) &&
+      !std::ranges::equal(logging, std::wstring(L"Yes"),
+      [](const WCHAR a, const WCHAR b) { return std::tolower(a) == std::tolower(b); }) &&
+      !std::ranges::equal(logging, std::wstring(L"True"),
+      [](const WCHAR a, const WCHAR b) { return std::tolower(a) == std::tolower(b); }))
+    return;
+
+  // Check if we have a LogFile key in the ini file and load the log file path otherwise use the DLL file path as the
+  //   log file path base
+  std::wstring path;
+  if (gIniFile->KeyExists(L"SpoofResolution", L"LogFile"))
+  {
+    path = gIniFile->GetValue(L"SpoofResolution", L"LogFile");
+  }  
+  else
+  {
+    // Get the full path to this DLL
+    path = std::wstring(MAX_PATH, 0);
+    if (GetModuleFileName(module, &path[0], MAX_PATH) == 0)
+    {
+      // Show an error message
+      MessageBox(NULL, L"Failed to get path to Spoof Resolution DLL file", L"Spoof Resolution", MB_OK | MB_ICONERROR);
+
+      return;
+    }
+
+    // Remove the file name from the path and replace it with spoofres.log
+    path.erase(path.rfind(std::filesystem::path::preferred_separator) + 1);
+    path += L"spoofres.log";
+  }
+
+  // Open the log file
+  gLogFile = std::make_unique<std::wofstream>(path, std::wofstream::out);
+  if (!*gLogFile)
+  {
+    // Show an error message and reset the log file pointer
+    // Note: std::format adds a significant amount of additional code into the DLL so instead we are using stdio
+    //   functions to compose the messages
+    wchar_t message[256];
+    swprintf_s(message, L"Failed to open %s file", path.c_str());
+    MessageBox(NULL, message, L"Spoof Resolution", MB_OK | MB_ICONERROR);
+    gLogFile.reset();
+
+    return;
+  }
+
+  // Enable UTF-8 support
+  gLogFile->imbue(std::locale(std::locale::empty(), new std::codecvt_byname<wchar_t, char, mbstate_t>("en_US.UTF-8")));
 }
 
 // DllMain function
