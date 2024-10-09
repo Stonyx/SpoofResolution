@@ -1,0 +1,37 @@
+; All sections and keys are optional
+
+; This section controls logging
+; If Logging key is set to On/Yes/True and no LogFile key is found, Spoof Resolution will create a log file in the same
+;   folder as the Spoof Resolution DLL file
+[SpoofResolution]
+Logging = On
+LogFile = C:\Path\To\LogFile.log
+
+; This section contains information used when spoofing resolution via the GetSystemMetrics Windows API function
+[GSM]
+Width = 3840
+Height = 2160
+
+; This section contains information used when spoofing resolution via the GetDeviceCaps Windows API function
+[GDC]
+Width = 3840
+Height = 2160
+BitsPerPixel = 32
+Frequency = 60
+
+; This section contains information used when spoofing resolution via the EnumDisplaySettings Windows API functions and
+;   can be present multiple times
+; Device is the device that the application/game is inquiring about and can be a full device name or a * wildcard
+; Mode is the mode number for the device that the application/game is inquiring about and can be any number starting at
+;   0, the word Current to represent the current resolution (Windows API ENUM_CURRENT_SETTINGS equivalent), the word
+;   Registry to represent the resolution information stored in the registry (Windows API ENUM_REGISTRY_SETTINGS
+;   equivalent), or a * wildcard
+[EDS|Device|Mode]
+Width = 3840
+Height = 2160
+BitsPerPixel = 32
+Frequency = 60
+Flags = 0
+PositionX = 0
+PositionY = 0
+Orientation = 0

@@ -145,11 +145,10 @@ static int SpoofGSMResolution(int realFuncRetValue, int index)
   gLogFileLock.lock();
   if (gLogFile != nullptr && !gLogFile->fail())
   {
-    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
-    //   block
     std::time_t time = std::time(NULL);
-    #pragma warning(suppress : 4996)
-    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+    std::tm localtime;
+    localtime_s(&localtime, &time);
+    *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") <<
       L" - Spoofed GetSystemMetrics resolution for index ";
     if (index == SM_CXSCREEN)
       *gLogFile << L"SM_CXSCREEN with the following details: Width = " << *spoofedValue << std::endl;
@@ -171,11 +170,10 @@ int WINAPI DetouredGetSystemMetrics(int nIndex)
   gLogFileLock.lock();
   if (gLogFile != nullptr && !gLogFile->fail())
   {
-    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
-    //   block
     std::time_t time = std::time(NULL);
-    #pragma warning(suppress : 4996)
-    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+    std::tm localtime;
+    localtime_s(&localtime, &time);
+    *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") <<
       L" - Detoured GetSystemMetrics function called with the following parameters: nIndex = " << nIndex << std::endl;
   }
   gLogFileLock.unlock();
@@ -245,12 +243,10 @@ static int SpoofGDCResolution(int realFuncRetValue, int index)
   gLogFileLock.lock();
   if (gLogFile != nullptr && !gLogFile->fail())
   {
-    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
-    //   block
     std::time_t time = std::time(NULL);
-    #pragma warning(suppress : 4996)
-    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
-      L" - Spoofed GetDeviceCaps resolution for index ";
+    std::tm localtime;
+    localtime_s(&localtime, &time);
+    *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") << L" - Spoofed GetDeviceCaps resolution for index ";
     if (index == HORZRES)
       *gLogFile << L"HORZRES with the following details: Width = " << *spoofedValue << std::endl;
     else if (index == VERTRES)
@@ -275,11 +271,10 @@ int WINAPI DetouredGetDeviceCaps(HDC hdc, int index)
   gLogFileLock.lock();
   if (gLogFile != nullptr && !gLogFile->fail())
   {
-    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
-    //   block
     std::time_t time = std::time(NULL);
-    #pragma warning(suppress : 4996)
-    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+    std::tm localtime;
+    localtime_s(&localtime, &time);
+    *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") <<
       L" - Detoured GetDeviceCaps function called with the following parameters: index = " << index << std::endl;
   }
   gLogFileLock.unlock();
@@ -409,11 +404,10 @@ static BOOL SpoofEDSResolution(BOOL realFuncRetValue, LPCWSTR deviceName, DWORD 
   gLogFileLock.lock();
   if (gLogFile != nullptr && !gLogFile->fail())
   {
-    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
-    //   block
     std::time_t time = std::time(NULL);
-    #pragma warning(suppress : 4996)
-    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+    std::tm localtime;
+    localtime_s(&localtime, &time);
+    *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") <<
       L" - Spoofed EnumDisplaySettings resolution for device " << (deviceName != NULL ? deviceName : L"NULL") <<
       L" and mode number " << (modeNumber == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
       (modeNumber == ENUM_REGISTRY_SETTINGS ? L"ENUM_REGISTRY_SETTINGS" : std::to_wstring(modeNumber))) <<
@@ -521,11 +515,10 @@ BOOL WINAPI DetouredEnumDisplaySettingsA(LPCSTR lpszDeviceName, DWORD iModeNum, 
   gLogFileLock.lock();
   if (gLogFile != nullptr && !gLogFile->fail())
   {
-    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
-    //   block
     std::time_t time = std::time(NULL);
-    #pragma warning(suppress : 4996)
-    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+    std::tm localtime;
+    localtime_s(&localtime, &time);
+    *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") <<
       L" - Detoured EnumDisplaySettingsA function called with the following parameters: lpszDeviceName = " <<
       (deviceName != nullptr ? *deviceName : L"NULL") << L", iModeNum = " <<
       (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
@@ -551,11 +544,10 @@ BOOL WINAPI DetouredEnumDisplaySettingsW(LPCWSTR lpszDeviceName, DWORD iModeNum,
   gLogFileLock.lock();
   if (gLogFile != nullptr && !gLogFile->fail())
   {
-    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
-    //   block
     std::time_t time = std::time(NULL);
-    #pragma warning(suppress : 4996)
-    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+    std::tm localtime;
+    localtime_s(&localtime, &time);
+    *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") <<
       L" - Detoured EnumDisplaySettingsW function called with the following parameters: lpszDeviceName = " <<
       (lpszDeviceName != NULL ? lpszDeviceName : L"NULL") << L", iModeNum = " <<
       (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
@@ -591,11 +583,10 @@ BOOL WINAPI DetouredEnumDisplaySettingsExA(LPCSTR lpszDeviceName, DWORD iModeNum
   gLogFileLock.lock();
   if (gLogFile != nullptr && !gLogFile->fail())
   {
-    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
-    //   block
     std::time_t time = std::time(NULL);
-    #pragma warning(suppress : 4996)
-    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+    std::tm localtime;
+    localtime_s(&localtime, &time);
+    *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") <<
       L" - Detoured EnumDisplaySettingsExA function called with the following parameters: lpszDeviceName = " <<
       (deviceName != nullptr ? *deviceName : L"NULL") << L", iModeNum = " <<
       (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
@@ -622,11 +613,10 @@ BOOL WINAPI DetouredEnumDisplaySettingsExW(LPCWSTR lpszDeviceName, DWORD iModeNu
   gLogFileLock.lock();
   if (gLogFile != nullptr && !gLogFile->fail())
   {
-    // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
-    //   block
     std::time_t time = std::time(NULL);
-    #pragma warning(suppress : 4996)
-    *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+    std::tm localtime;
+    localtime_s(&localtime, &time);
+    *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") <<
       L" - Detoured EnumDisplaySettingsExW function called with the following parameters: lpszDeviceName = " <<
       (lpszDeviceName != NULL ? lpszDeviceName : L"NULL") << L", iModeNum = " <<
       (iModeNum == ENUM_CURRENT_SETTINGS ? L"ENUM_CURRENT_SETTINGS" :
@@ -779,11 +769,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     // Write to the log file
     if (gLogFile != nullptr && !gLogFile->fail())
     {
-      // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
-      //   area
       std::time_t time = std::time(NULL);
-      #pragma warning(suppress : 4996)
-      *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+      std::tm localtime;
+      localtime_s(&localtime, &time);
+      *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") <<
         L" - DllMain function called with the following parameters: ul_reason_for_call = DLL_PROCESS_ATTACH" <<
         std::endl;
     }
@@ -805,12 +794,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         // Write to the log file
         if (gLogFile != nullptr && !gLogFile->fail())
         {
-          // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread
-          //   safe area
           std::time_t time = std::time(NULL);
-          #pragma warning(suppress : 4996)
-          *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
-            L" - Detouring GetSystemMetrics function" << std::endl;
+          std::tm localtime;
+          localtime_s(&localtime, &time);
+          *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") << L" - Detouring GetSystemMetrics function" <<
+            std::endl;
         }
       }
 
@@ -824,12 +812,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         // Write to the log file
         if (gLogFile != nullptr && !gLogFile->fail())
         {
-          // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread
-          //   safe area
           std::time_t time = std::time(NULL);
-          #pragma warning(suppress : 4996)
-          *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
-            L" - Detouring GetDeviceCaps function" << std::endl;
+          std::tm localtime;
+          localtime_s(&localtime, &time);
+          *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") << L" - Detouring GetDeviceCaps function" <<
+            std::endl;
         }
       }
 
@@ -862,11 +849,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         // Write to the log file
         if (gLogFile != nullptr && !gLogFile->fail())
         {
-          // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread
-          //   safe area
           std::time_t time = std::time(NULL);
-          #pragma warning(suppress : 4996)
-          *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+          std::tm localtime;
+          localtime_s(&localtime, &time);
+          *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") <<
             L" - Detouring EnumDisplaySettings functions" << std::endl;
         }
       }
@@ -880,11 +866,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     // Write to the log file
     if (gLogFile != nullptr && !gLogFile->fail())
     {
-      // Note: we can safely use the thread unsafe std::localtime function since we are using it inside a thread safe
-      //   block
       std::time_t time = std::time(NULL);
-      #pragma warning(suppress : 4996)
-      *gLogFile << std::put_time(std::localtime(&time), L"%d/%m/%y@%H:%M:%S") <<
+      std::tm localtime;
+      localtime_s(&localtime, &time);
+      *gLogFile << std::put_time(&localtime, L"%d/%m/%y@%H:%M:%S") <<
         L" - DllMain function called with the following parameters: ul_reason_for_call = DLL_PROCESS_DETACH" <<
         std::endl;
     }
